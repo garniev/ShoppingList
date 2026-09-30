@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#111827" />
+  <meta name="description" content="A simple, fast shopping list available offline." />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Shopping List" />
+  <link rel="manifest" href="pwa/manifest.json" />
+  <link rel="icon" href="assets/icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="assets/icon.svg" />
+  <title>Shopping List</title>
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+
+<body>
+  <main class="app">
+    <div class="app-header">
+      <h1>Shopping List</h1>
+      <button
+        id="installButton"
+        class="install-button"
+        type="button"
+        aria-label="Install app"
+        title="Install app"
+        hidden
+      >
+        📲 
+      </button>
+      <button id="themeToggle" class="theme-toggle" aria-label="Toggle theme" title="Toggle dark/light mode">
+        ☀️
+      </button>
+    </div>
+    <p class="subtitle">Keep track of what you need and check off each item as you shop.</p>
+
+    <form id="taskForm" class="task-form">
+      <textarea
+        id="taskInput"
+        class="task-input"
+        placeholder="Add an item..."
+        autocomplete="off"
+        rows="2"
+      ></textarea>
+
+      <button class="add-button" type="submit" aria-label="Add item" title="Add item">
+        ＋
+      </button>
+
+      <button id="sortButton" class="sort-button" type="button" aria-label="Sort items" title="Sort items">
+        ⇅
+      </button>
+
+      <button
+        id="dedupeButton"
+        class="sort-button"
+        type="button"
+        aria-label="Remove duplicate items"
+        title="Remove duplicate items"
+      >
+        🧹
+      </button>
+    </form>
+
+    <div id="taskList" class="task-list"></div>
+
+    <div class="footer">
+      <span class="footer-status">Saved automatically</span>
+    </div>
+  </main>
+  <script src="js/script.js" defer></script>
+</body>
+</html>
