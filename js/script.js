@@ -4,8 +4,6 @@ const THEME_KEY = "theme-preference";
 const taskForm = document.getElementById("taskForm");
 const taskInput = document.getElementById("taskInput");
 const taskList = document.getElementById("taskList");
-const sortButton = document.getElementById("sortButton");
-const dedupeButton = document.getElementById("dedupeButton");
 const themeToggle = document.getElementById("themeToggle");
 const installButton = document.getElementById("installButton");
 
@@ -136,26 +134,36 @@ function deleteTask(id) {
   renderTasks();
 }
 
-function sortTasksAlphabetically() {
+function sortTasksAlphabetically(section) {
   const compareTasks = (firstTask, secondTask) =>
     firstTask.text.localeCompare(secondTask.text, "es", {
       sensitivity: "base"
     });
 
-  tasks = [
-    ...tasks.filter((task) => !task.completed).sort(compareTasks),
-    ...tasks.filter((task) => task.completed).sort(compareTasks)
-  ];
+  tasks = tasks.map((task) => task);
+  const sectionTasks = tasks
+    .filter((task) => task.completed === section)
+    .sort(compareTasks);
+  let sectionIndex = 0;
+
+  tasks = tasks.map((task) =>
+    task.completed === section ? sectionTasks[sectionIndex++] : task
+  );
 
   saveTasks();
   renderTasks();
 }
 
-function removeDuplicateTasks() {
+function removeDuplicateTasks(section) {
   const seenTaskTexts = new Set();
   const uniqueTasks = [];
 
-  for (const task of getOrderedTasks()) {
+  for (const task of tasks) {
+    if (task.completed !== section) {
+      uniqueTasks.push(task);
+      continue;
+    }
+
     const normalizedText = task.text.trim().toLocaleLowerCase("es");
 
     if (seenTaskTexts.has(normalizedText)) {
@@ -170,6 +178,80 @@ function removeDuplicateTasks() {
 
   saveTasks();
   renderTasks();
+}
+
+function deleteAllTasks(section) {
+  tasks = tasks.filter((task) => task.completed !== section);
+  saveTasks();
+  renderTasks();
+}
+
+function setAllTasksCompleted(completed) {
+  tasks = tasks.map((task) =>
+    task.completed === !completed ? { ...task, completed } : task
+  );
+  saveTasks();
+  renderTasks();
+}
+
+function closeActionMenus() {
+  document.querySelectorAll(".action-menu").forEach((menu) => {
+    menu.querySelector(".action-menu-options").hidden = true;
+    menu.querySelector(".action-menu-button").setAttribute("aria-expanded", "false");
+  });
+}
+
+function toggleActionMenu(menu) {
+  const options = menu.querySelector(".action-menu-options");
+  const button = menu.querySelector(".action-menu-button");
+  const shouldOpen = options.hidden;
+
+  closeActionMenus();
+  options.hidden = !shouldOpen;
+  button.setAttribute("aria-expanded", String(shouldOpen));
+}
+
+function createActionMenu(section) {
+  const menu = document.createElement("div");
+  menu.className = "action-menu";
+
+  const menuButton = document.createElement("button");
+  menuButton.className = "action-menu-button";
+  menuButton.type = "button";
+  menuButton.textContent = "⋮";
+  menuButton.setAttribute("aria-label", "More actions");
+  menuButton.setAttribute("aria-haspopup", "true");
+  menuButton.setAttribute("aria-expanded", "false");
+  menuButton.title = "More actions";
+  menuButton.addEventListener("click", (event) => {
+    event.stopPropagation();
+    toggleActionMenu(menu);
+  });
+
+  const options = document.createElement("div");
+  options.className = "action-menu-options";
+  options.role = "menu";
+  options.hidden = true;
+
+  const actions = [
+    ["Sort", "sort"],
+    ["Clean", "clean"],
+    [section ? "Uncheck all" : "Check all", section ? "uncheck-all" : "check-all"],
+    ["Delete all", "delete-all"]
+  ];
+
+  actions.forEach(([label, action]) => {
+    const option = document.createElement("button");
+    option.type = "button";
+    option.role = "menuitem";
+    option.textContent = label;
+    option.dataset.action = action;
+    option.dataset.section = String(section);
+    options.appendChild(option);
+  });
+
+  menu.append(menuButton, options);
+  return menu;
 }
 
 function getOrderedTasks() {
@@ -231,7 +313,9 @@ function renderTasks() {
     if (!task.completed && !activeHeaderAdded) {
       const activeHeader = document.createElement("div");
       activeHeader.className = "task-group-header";
-      activeHeader.textContent = `To Buy (${activeTaskCount})`;
+      const activeTitle = document.createElement("span");
+      activeTitle.textContent = `To Buy (${activeTaskCount})`;
+      activeHeader.append(activeTitle, createActionMenu(false));
       taskList.appendChild(activeHeader);
       activeHeaderAdded = true;
     }
@@ -239,7 +323,9 @@ function renderTasks() {
     if (task.completed && !completedHeaderAdded) {
       const completedHeader = document.createElement("div");
       completedHeader.className = "task-group-header";
-      completedHeader.textContent = `Bought (${completedTaskCount})`;
+      const completedTitle = document.createElement("span");
+      completedTitle.textContent = `Bought (${completedTaskCount})`;
+      completedHeader.append(completedTitle, createActionMenu(true));
       taskList.appendChild(completedHeader);
       completedHeaderAdded = true;
     }
@@ -338,7 +424,48 @@ taskForm.addEventListener("submit", (event) => {
   taskInput.focus();
 });
 
-sortButton.addEventListener("click", sortTasksAlphabetically);
-dedupeButton.addEventListener("click", removeDuplicateTasks);
+taskList.addEventListener("click", (event) => {
+  const option = event.target.closest("[data-action]");
+
+  if (!option) {
+    return;
+  }
+
+  const section = option.dataset.section === "true";
+
+  switch (option.dataset.action) {
+    case "sort":
+      sortTasksAlphabetically(section);
+      break;
+    case "clean":
+      removeDuplicateTasks(section);
+      break;
+    case "delete-all":
+      deleteAllTasks(section);
+      break;
+    case "check-all":
+      setAllTasksCompleted(true);
+      break;
+    case "uncheck-all":
+      setAllTasksCompleted(false);
+      break;
+    default:
+      return;
+  }
+
+  closeActionMenus();
+});
+
+document.addEventListener("click", (event) => {
+  if (!event.target.closest(".action-menu")) {
+    closeActionMenus();
+  }
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    closeActionMenus();
+  }
+});
 
 renderTasks();
