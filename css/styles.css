@@ -189,7 +189,11 @@ body.light-mode .task-input:focus {
   background: var(--button-hover);
 }
 
-.sort-button {
+.action-menu {
+  position: relative;
+}
+
+.action-menu-button {
   border: 1px solid var(--border-color);
   border-radius: 10px;
   width: 66px;
@@ -197,21 +201,56 @@ body.light-mode .task-input:focus {
   height: 66px;
   background: var(--bg-primary);
   color: var(--text-primary);
-  font-size: 18px;
+  font-size: 28px;
+  line-height: 1;
   font-weight: 700;
   cursor: pointer;
   transition: background-color 0.3s ease, border-color 0.3s ease;
 }
 
-.sort-button:hover {
+.action-menu-button:hover,
+.action-menu-button[aria-expanded="true"] {
   background: var(--border-light);
   border-color: var(--text-secondary);
 }
 
-.sort-button:focus-visible,
+.action-menu-button:focus-visible,
+.action-menu-options button:focus-visible,
 .add-button:focus-visible {
   outline: 3px solid rgba(17, 24, 39, 0.18);
   outline-offset: 2px;
+}
+
+.action-menu-options {
+  position: absolute;
+  z-index: 10;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 130px;
+  padding: 6px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  box-shadow: 0 8px 20px var(--shadow-color);
+}
+
+.action-menu-options button {
+  display: block;
+  width: 100%;
+  padding: 9px 12px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 16px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+}
+
+.action-menu-options button:hover {
+  background: var(--border-light);
 }
 
 .task-list {
@@ -237,6 +276,21 @@ body.light-mode .task-input:focus {
   font-weight: 700;
   letter-spacing: 0.02em;
   text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.task-group-header .action-menu-button {
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  font-size: 22px;
+}
+
+.task-group-header .action-menu-options {
+  top: calc(100% + 4px);
 }
 
 .task {
@@ -334,19 +388,4 @@ body.light-mode .task-input:focus {
   background: var(--bg-primary);
   border: 1px dashed var(--border-color);
   border-radius: 12px;
-}
-
-.footer {
-  margin-top: 18px;
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px 16px;
-  color: var(--text-secondary);
-  font-size: 14px;
-}
-
-.footer-status {
-  margin-left: auto;
 }
