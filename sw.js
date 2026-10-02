@@ -1,4 +1,4 @@
-const CACHE_NAME = "shopping-list-v1";
+const CACHE_NAME = "shopping-list-v2";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -35,28 +35,41 @@ self.addEventListener("fetch", (event) => {
 
   event.respondWith(
     (async () => {
-      const cachedResponse = await caches.match(event.request);
-
-      if (cachedResponse) {
-        return cachedResponse;
-      }
-
       try {
-        const networkResponse = await fetch(event.request);
+        // Always try the network first so deployed changes are detected.
+        // no-store also avoids reusing an outdated browser HTTP-cache entry.
+        const networkRequest = new Request(event.request, {
+          cache: "no-store"
+        });
+        const networkResponse = await fetch(networkRequest);
 
         if (
           networkResponse.ok &&
           new URL(event.request.url).origin === self.location.origin
         ) {
           const responseToCache = networkResponse.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, responseToCache);
-          });
+          event.waitUntil(
+            caches.open(CACHE_NAME).then((cache) =>
+              cache.put(event.request, responseToCache)
+            )
+          );
         }
 
         return networkResponse;
       } catch (error) {
-        return caches.match("./index.html");
+        // If offline, use the requested cached resource first.
+        const cachedResponse = await caches.match(event.request);
+
+        if (cachedResponse) {
+          return cachedResponse;
+        }
+
+        // Navigation requests can fall back to the cached application shell.
+        if (event.request.mode === "navigate") {
+          return caches.match("./index.html");
+        }
+
+        return Response.error();
       }
     })()
   );
