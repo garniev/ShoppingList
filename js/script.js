@@ -100,11 +100,26 @@ function saveTasks() {
 }
 
 function addTasks(texts) {
-  const newTasks = texts.map((text) => ({
-    id: crypto.randomUUID(),
-    text,
-    completed: false
-  }));
+  const newTasks = [];
+
+  texts.forEach((text) => {
+    const normalizedText = text.trim().toLocaleLowerCase("es");
+    const existingTask = tasks.find(
+      (task) =>
+        task.text.trim().toLocaleLowerCase("es") === normalizedText
+    );
+
+    if (existingTask) {
+      existingTask.completed = false;
+      return;
+    }
+
+    newTasks.push({
+      id: crypto.randomUUID(),
+      text,
+      completed: false
+    });
+  });
 
   tasks.push(...newTasks);
   saveTasks();
