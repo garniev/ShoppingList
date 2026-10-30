@@ -19,7 +19,13 @@ class Element {
     this.hidden = false;
     this.isConnected = false;
     this.classList = {
-      add: () => {}, remove: () => {}, contains: () => false
+      add: (...names) => {
+        this.className = [...new Set([...this.className.split(/\s+/).filter(Boolean), ...names])].join(" ");
+      },
+      remove: (...names) => {
+        this.className = this.className.split(/\s+/).filter((name) => name && !names.includes(name)).join(" ");
+      },
+      contains: (name) => this.className.split(/\s+/).includes(name)
     };
   }
   set innerHTML(value) {
@@ -81,6 +87,7 @@ class Element {
   }
   querySelector(selector) { return this.querySelectorAll(selector)[0]; }
   focus() { this.document.activeElement = this; }
+  getBoundingClientRect() { return { top: 0, height: 0 }; }
   showModal() { this.open = true; }
   close() { this.open = false; this.dispatch("close"); }
   setCustomValidity(message) { this.validationMessage = message; }
@@ -113,7 +120,10 @@ function setup(initial = [], view = "list") {
   const timers = new Map();
   const context = vm.createContext({
     document, navigator: {}, console, crypto: require("node:crypto").webcrypto,
-    window: new Element("window", document),
+    window: Object.assign(new Element("window", document), {
+      scrollY: 0,
+      requestAnimationFrame: (callback) => callback()
+    }),
     localStorage: {
       getItem: (key) => storage.get(key) ?? null,
       setItem: (key, value) => storage.set(key, value)

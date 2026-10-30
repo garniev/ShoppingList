@@ -141,9 +141,18 @@ body.light-mode .theme-toggle:focus-visible {
 }
 
 .task-form {
+  position: sticky;
+  top: 0;
+  z-index: 20;
   display: flex;
   gap: 10px;
   margin-bottom: 24px;
+  padding: 16px 0;
+  background: var(--bg-secondary);
+}
+
+.task-form.is-sticky {
+  border-bottom: 1px solid var(--border-color);
 }
 
 .task-input {
@@ -272,7 +281,7 @@ body.light-mode .task-input:focus {
   padding: 8px 0;
   border-bottom: 1px solid var(--border-color);
   color: var(--text-secondary);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 700;
   letter-spacing: 0.02em;
   text-transform: uppercase;
@@ -392,10 +401,12 @@ body.light-mode .task-input:focus {
 
 .view-controls {
   display: inline-flex;
-  gap: 4px;
-  padding: 4px;
+  width: fit-content;
+  gap: 2px;
+  margin: -8px 0 16px auto;
+  padding: 3px;
   border: 1px solid var(--border-color);
-  border-radius: 12px;
+  border-radius: 8px;
   background: var(--bg-primary);
 }
 
@@ -417,6 +428,13 @@ body.light-mode .task-input:focus {
   color: var(--bg-secondary);
 }
 
+.view-controls button {
+  min-height: 34px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+}
+
 .category-hint {
   color: var(--text-secondary);
   font-size: 13px;
@@ -427,7 +445,7 @@ body.light-mode .task-input:focus {
   grid-column: 1 / -1;
   margin: 8px 0 0;
   color: var(--text-primary);
-  font-size: 16px;
+  font-size: 14px;
   overflow-wrap: anywhere;
 }
 

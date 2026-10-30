@@ -12,6 +12,18 @@ const categorySelect = document.getElementById("categorySelect");
 const newCategoryInput = document.getElementById("newCategory");
 const appStatus = document.getElementById("appStatus");
 
+function updateTaskFormStickyState() {
+  if (taskForm.getBoundingClientRect().top <= 1) {
+    taskForm.classList.add("is-sticky");
+  } else {
+    taskForm.classList.remove("is-sticky");
+  }
+}
+
+window.addEventListener("scroll", updateTaskFormStickyState, { passive: true });
+window.addEventListener("resize", updateTaskFormStickyState);
+updateTaskFormStickyState();
+
 let tasks = loadTasks();
 let draggedTaskId = null;
 let installPromptEvent = null;

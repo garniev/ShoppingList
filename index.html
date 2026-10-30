@@ -47,14 +47,12 @@
       <button class="add-button" type="submit" aria-label="Add item" title="Add item">
         ＋
       </button>
-
     </form>
 
     <div class="view-controls" role="group" aria-label="Pending items view">
       <button type="button" data-view="list" aria-pressed="true">List</button>
       <button type="button" data-view="categories" aria-pressed="false">Categories</button>
     </div>
-    <p class="category-hint">Hold an item or use its category button to organize it.</p>
     <p id="appStatus" role="status" hidden></p>
     <div id="taskList" class="task-list"></div>
 
@@ -66,7 +64,6 @@
         <select id="categorySelect"></select>
         <label for="newCategory">Or create a category</label>
         <input id="newCategory" type="text" maxlength="40" placeholder="New category name" autocomplete="off" />
-        <p class="category-hint">A new name takes precedence over the selection above.</p>
         <div class="dialog-actions">
           <button id="cancelCategory" type="button">Cancel</button>
           <button type="submit">Save</button>
