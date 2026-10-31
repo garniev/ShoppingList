@@ -1,15 +1,10 @@
 const STORAGE_KEY = "task-done-items";
-const THEME_KEY = "theme-preference";
 const VIEW_KEY = "task-view-preference";
-const TRANSFER_FORMAT = "shopping-list";
-const TRANSFER_VERSION = 1;
 const MAX_IMPORT_BYTES = 5 * 1024 * 1024;
 
 const taskForm = document.getElementById("taskForm");
 const taskInput = document.getElementById("taskInput");
 const taskList = document.getElementById("taskList");
-const themeToggle = document.getElementById("themeToggle");
-const installButton = document.getElementById("installButton");
 const categoryDialog = document.getElementById("categoryDialog");
 const categorySelect = document.getElementById("categorySelect");
 const newCategoryInput = document.getElementById("newCategory");
@@ -20,18 +15,6 @@ const importDialog = document.getElementById("importDialog");
 const importFile = document.getElementById("importFile");
 const importFeedback = document.getElementById("importFeedback");
 const confirmImport = document.getElementById("confirmImport");
-
-function updateTaskFormStickyState() {
-  if (taskForm.getBoundingClientRect().top <= 1) {
-    taskForm.classList.add("is-sticky");
-  } else {
-    taskForm.classList.remove("is-sticky");
-  }
-}
-
-window.addEventListener("scroll", updateTaskFormStickyState, { passive: true });
-window.addEventListener("resize", updateTaskFormStickyState);
-updateTaskFormStickyState();
 
 let tasks = loadTasks();
 let draggedTaskId = null;
@@ -62,75 +45,6 @@ function persistValue(key, value) {
     console.error("Could not save changes:", error);
     return false;
   }
-}
-
-function normalizeCategory(value) {
-  return typeof value === "string" ? value.trim().replace(/\s+/g, " ") || null : null;
-}
-
-function createListExport(items = tasks) {
-  return {
-    format: TRANSFER_FORMAT,
-    version: TRANSFER_VERSION,
-    exportedAt: new Date().toISOString(),
-    items: items.map(({ id, text, completed, category }) => ({
-      id, text, completed, category: normalizeCategory(category)
-    }))
-  };
-}
-
-function parseListImport(contents) {
-  let data;
-  try {
-    data = JSON.parse(contents);
-  } catch {
-    throw new Error("This file is not valid JSON. Choose a list exported by this app.");
-  }
-  if (!data || typeof data !== "object" || Array.isArray(data) || data.format !== TRANSFER_FORMAT) {
-    throw new Error("This is not a Shopping List export.");
-  }
-  if (data.version !== TRANSFER_VERSION) {
-    throw new Error("This export version is not supported. Update the app or request a new export.");
-  }
-  if (typeof data.exportedAt !== "string" || !Number.isFinite(Date.parse(data.exportedAt)) ||
-      !Array.isArray(data.items)) {
-    throw new Error("This export is incomplete or damaged.");
-  }
-  return data.items.map((item, index) => {
-    if (!item || typeof item !== "object" || Array.isArray(item) ||
-        typeof item.id !== "string" || !item.id.trim() ||
-        typeof item.text !== "string" || !item.text.trim() ||
-        typeof item.completed !== "boolean" ||
-        !(item.category === null || (typeof item.category === "string" && normalizeCategory(item.category)))) {
-      throw new Error(`Item ${index + 1} is invalid. Nothing has been imported.`);
-    }
-    // Only copy supported fields; imported text is rendered with textContent.
-    return { id: item.id, text: item.text, completed: item.completed, category: normalizeCategory(item.category) };
-  });
-}
-
-function planListImport(imported, existing = tasks) {
-  const names = new Set(existing.map((item) => item.text.trim().toLocaleLowerCase("es")));
-  const categories = new Map(existing.filter((item) => item.category)
-    .map((item) => [item.category.toLocaleLowerCase("es"), item.category]));
-  const additions = [];
-  let skipped = 0;
-  imported.forEach((item) => {
-    const name = item.text.trim().toLocaleLowerCase("es");
-    if (names.has(name)) {
-      skipped++;
-      return;
-    }
-    names.add(name);
-    let category = normalizeCategory(item.category);
-    if (category) {
-      const key = category.toLocaleLowerCase("es");
-      category = categories.get(key) || category;
-      categories.set(key, category);
-    }
-    additions.push({ ...item, category });
-  });
-  return { additions, skipped };
 }
 
 function showTransferStatus(message) {
@@ -324,79 +238,6 @@ document.querySelectorAll("[data-view]").forEach((button) => {
     renderTasks();
   });
 });
-
-function registerServiceWorker() {
-  if (!("serviceWorker" in navigator)) {
-    return;
-  }
-
-  window.addEventListener("load", () => {
-    navigator.serviceWorker.register("./sw.js").catch((error) => {
-      console.error("Could not register service worker:", error);
-    });
-  });
-}
-
-function setupInstallPrompt() {
-  if (!installButton) {
-    return;
-  }
-
-  window.addEventListener("beforeinstallprompt", (event) => {
-    event.preventDefault();
-    installPromptEvent = event;
-    installButton.hidden = false;
-  });
-
-  installButton.addEventListener("click", async () => {
-    if (!installPromptEvent) {
-      return;
-    }
-
-    installPromptEvent.prompt();
-    await installPromptEvent.userChoice;
-    installPromptEvent = null;
-    installButton.hidden = true;
-  });
-
-  window.addEventListener("appinstalled", () => {
-    installPromptEvent = null;
-    installButton.hidden = true;
-  });
-}
-
-registerServiceWorker();
-setupInstallPrompt();
-
-// Theme initialization - dark mode by default
-function initTheme() {
-  const savedTheme = localStorage.getItem(THEME_KEY);
-  const isDark = savedTheme !== "light";
-
-  if (isDark) {
-    document.body.classList.remove("light-mode");
-    themeToggle.textContent = "☀️";
-  } else {
-    document.body.classList.add("light-mode");
-    themeToggle.textContent = "🌙";
-  }
-}
-
-function toggleTheme() {
-  const isCurrentlyLight = document.body.classList.contains("light-mode");
-  if (isCurrentlyLight) {
-    document.body.classList.remove("light-mode");
-    localStorage.setItem(THEME_KEY, "dark");
-    themeToggle.textContent = "☀️";
-  } else {
-    document.body.classList.add("light-mode");
-    localStorage.setItem(THEME_KEY, "light");
-    themeToggle.textContent = "🌙";
-  }
-}
-
-themeToggle.addEventListener("click", toggleTheme);
-initTheme();
 
 function loadTasks() {
   try {
@@ -697,10 +538,6 @@ function setupLongPress(element, taskId) {
     openCategoryDialog(taskId, element.querySelector(".category-button"));
   });
 }
-
-window.addEventListener("blur", () => cancelPendingPress());
-document.addEventListener("scroll", () => cancelPendingPress(), true);
-document.addEventListener("visibilitychange", () => cancelPendingPress());
 
 function renderTasks() {
   cancelPendingPress();

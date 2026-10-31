@@ -204,7 +204,9 @@ function setup(initial = [], view = "list") {
       return option;
     }
   });
-  vm.runInContext(fs.readFileSync(require("node:path").join(__dirname, "../js/script.js"), "utf8"), context);
+  for (const script of ["list-transfer.js", "pwa.js", "script.js"]) {
+    vm.runInContext(fs.readFileSync(require("node:path").join(__dirname, `../js/${script}`), "utf8"), context);
+  }
   return {
     ids, storage, document, context, downloads, objectURLs, revokedURLs, consoleErrors, writes,
     transferOptions,

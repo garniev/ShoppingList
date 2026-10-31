@@ -53,7 +53,9 @@ The tests cover category persistence and normalization, item grouping, views, it
 
 - `index.html`: interface structure and PWA resources.
 - `css/styles.css`: styles and themes.
-- `js/script.js`: shopping list, preferences, and category logic.
+- `js/script.js`: shopping-list state, rendering, categories, and interactions.
+- `js/list-transfer.js`: JSON export/import validation and merge planning.
+- `js/pwa.js`: theme, install prompt, service worker, and sticky-form behavior.
 - `sw.js`: resource caching and offline support.
 - `pwa/manifest.json`: PWA installation metadata.
 - `assets/`: app icons.
