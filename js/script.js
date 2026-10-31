@@ -1,6 +1,9 @@
 const STORAGE_KEY = "task-done-items";
 const THEME_KEY = "theme-preference";
 const VIEW_KEY = "task-view-preference";
+const TRANSFER_FORMAT = "shopping-list";
+const TRANSFER_VERSION = 1;
+const MAX_IMPORT_BYTES = 5 * 1024 * 1024;
 
 const taskForm = document.getElementById("taskForm");
 const taskInput = document.getElementById("taskInput");
@@ -11,6 +14,12 @@ const categoryDialog = document.getElementById("categoryDialog");
 const categorySelect = document.getElementById("categorySelect");
 const newCategoryInput = document.getElementById("newCategory");
 const appStatus = document.getElementById("appStatus");
+const transferMenu = document.getElementById("transferMenu");
+const transferMenuButton = document.getElementById("transferMenuButton");
+const importDialog = document.getElementById("importDialog");
+const importFile = document.getElementById("importFile");
+const importFeedback = document.getElementById("importFeedback");
+const confirmImport = document.getElementById("confirmImport");
 
 function updateTaskFormStickyState() {
   if (taskForm.getBoundingClientRect().top <= 1) {
@@ -31,6 +40,8 @@ let currentView = loadView();
 let categoryTaskId = null;
 let categoryReturnFocus = null;
 let cancelPendingPress = () => {};
+let pendingImport = null;
+let importReadToken = 0;
 
 function loadView() {
   try {
@@ -44,16 +55,214 @@ function persistValue(key, value) {
   try {
     localStorage.setItem(key, value);
     appStatus.hidden = true;
+    return true;
   } catch (error) {
     appStatus.textContent = "Changes could not be saved on this device. Keep this page open to avoid losing them.";
     appStatus.hidden = false;
     console.error("Could not save changes:", error);
+    return false;
   }
 }
 
 function normalizeCategory(value) {
   return typeof value === "string" ? value.trim().replace(/\s+/g, " ") || null : null;
 }
+
+function createListExport(items = tasks) {
+  return {
+    format: TRANSFER_FORMAT,
+    version: TRANSFER_VERSION,
+    exportedAt: new Date().toISOString(),
+    items: items.map(({ id, text, completed, category }) => ({
+      id, text, completed, category: normalizeCategory(category)
+    }))
+  };
+}
+
+function parseListImport(contents) {
+  let data;
+  try {
+    data = JSON.parse(contents);
+  } catch {
+    throw new Error("This file is not valid JSON. Choose a list exported by this app.");
+  }
+  if (!data || typeof data !== "object" || Array.isArray(data) || data.format !== TRANSFER_FORMAT) {
+    throw new Error("This is not a Shopping List export.");
+  }
+  if (data.version !== TRANSFER_VERSION) {
+    throw new Error("This export version is not supported. Update the app or request a new export.");
+  }
+  if (typeof data.exportedAt !== "string" || !Number.isFinite(Date.parse(data.exportedAt)) ||
+      !Array.isArray(data.items)) {
+    throw new Error("This export is incomplete or damaged.");
+  }
+  return data.items.map((item, index) => {
+    if (!item || typeof item !== "object" || Array.isArray(item) ||
+        typeof item.id !== "string" || !item.id.trim() ||
+        typeof item.text !== "string" || !item.text.trim() ||
+        typeof item.completed !== "boolean" ||
+        !(item.category === null || (typeof item.category === "string" && normalizeCategory(item.category)))) {
+      throw new Error(`Item ${index + 1} is invalid. Nothing has been imported.`);
+    }
+    // Only copy supported fields; imported text is rendered with textContent.
+    return { id: item.id, text: item.text, completed: item.completed, category: normalizeCategory(item.category) };
+  });
+}
+
+function planListImport(imported, existing = tasks) {
+  const names = new Set(existing.map((item) => item.text.trim().toLocaleLowerCase("es")));
+  const categories = new Map(existing.filter((item) => item.category)
+    .map((item) => [item.category.toLocaleLowerCase("es"), item.category]));
+  const additions = [];
+  let skipped = 0;
+  imported.forEach((item) => {
+    const name = item.text.trim().toLocaleLowerCase("es");
+    if (names.has(name)) {
+      skipped++;
+      return;
+    }
+    names.add(name);
+    let category = normalizeCategory(item.category);
+    if (category) {
+      const key = category.toLocaleLowerCase("es");
+      category = categories.get(key) || category;
+      categories.set(key, category);
+    }
+    additions.push({ ...item, category });
+  });
+  return { additions, skipped };
+}
+
+function showTransferStatus(message) {
+  appStatus.textContent = message;
+  appStatus.hidden = false;
+}
+
+function exportList() {
+  closeActionMenus();
+  let url;
+  let link;
+  try {
+    const data = createListExport();
+    const filename = `shopping-list-${data.exportedAt.slice(0, 10)}.json`;
+    url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }));
+    link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+  } catch (error) {
+    showTransferStatus("The list could not be exported. Please try again.");
+    console.error("Could not export list:", error);
+  } finally {
+    link?.remove();
+    // Allow browsers (including mobile browsers) to start reading the download.
+    if (url) setTimeout(() => URL.revokeObjectURL(url), 1000);
+    transferMenuButton.focus({ preventScroll: true });
+  }
+}
+
+function resetImport() {
+  importReadToken++;
+  pendingImport = null;
+  importFile.value = "";
+  confirmImport.disabled = true;
+  importFeedback.textContent = "Choose a file to preview its contents.";
+}
+
+function openImportDialog() {
+  cancelPendingPress();
+  closeActionMenus();
+  if (importDialog.open) return;
+  resetImport();
+  importDialog.showModal();
+  importFile.focus();
+}
+
+async function previewImportFile() {
+  const token = ++importReadToken;
+  pendingImport = null;
+  confirmImport.disabled = true;
+  const file = importFile.files?.[0];
+  if (!file) {
+    importFeedback.textContent = "Choose a file to preview its contents.";
+    return;
+  }
+  importFeedback.textContent = "Reading list…";
+  try {
+    if (file.size > MAX_IMPORT_BYTES) throw new Error("This file is too large. Choose a JSON export of up to 5 MB.");
+    const contents = await file.text();
+    if (token !== importReadToken || !importDialog.open) return;
+    const imported = parseListImport(contents);
+    const { additions, skipped } = planListImport(imported);
+    const completed = imported.filter((item) => item.completed).length;
+    const categoryCount = new Set(imported.map((item) => item.category?.toLocaleLowerCase("es")).filter(Boolean)).size;
+    importFeedback.textContent = `${imported.length} items: ${imported.length - completed} pending, ${completed} completed, ${categoryCount} categories. ` +
+      `${additions.length} will be added; ${skipped} matching or repeated names will be skipped.` +
+      (additions.length ? " Your existing items will not change." : " Nothing new to import.");
+    pendingImport = imported;
+    confirmImport.disabled = additions.length === 0;
+  } catch (error) {
+    if (token !== importReadToken || !importDialog.open) return;
+    importFeedback.textContent = error instanceof Error ? error.message : "The file could not be read. Please try again.";
+  }
+}
+
+function confirmListImport(event) {
+  event.preventDefault();
+  if (!importDialog.open || !pendingImport || confirmImport.disabled) return;
+  confirmImport.disabled = true;
+  try {
+    // Recheck against the current list, not the snapshot used for the preview.
+    const { additions, skipped } = planListImport(pendingImport);
+    if (additions.length) {
+      const candidate = [...tasks, ...additions.map((item) => ({ ...item, id: crypto.randomUUID() }))];
+      if (!persistValue(STORAGE_KEY, JSON.stringify(candidate))) {
+        importFeedback.textContent = "The list could not be saved on this device. Nothing was imported. Free some storage and try again.";
+        confirmImport.disabled = false;
+        return;
+      }
+      tasks = candidate;
+      renderTasks();
+    }
+    importDialog.close();
+  } catch (error) {
+    importFeedback.textContent = "The list could not be imported. Please try again.";
+    confirmImport.disabled = false;
+    console.error("Could not import list:", error);
+  }
+}
+
+transferMenuButton.addEventListener("click", () => toggleActionMenu(transferMenu));
+document.getElementById("exportList").addEventListener("click", exportList);
+document.getElementById("importList").addEventListener("click", openImportDialog);
+importFile.addEventListener("change", previewImportFile);
+document.getElementById("importForm").addEventListener("submit", confirmListImport);
+document.getElementById("cancelImport").addEventListener("click", () => importDialog.close());
+importDialog.addEventListener("close", () => {
+  resetImport();
+  transferMenuButton.focus({ preventScroll: true });
+});
+
+// Support the standard arrow-key navigation pattern for the global menu.
+transferMenu.addEventListener("keydown", (event) => {
+  const options = transferMenu.querySelector(".action-menu-options");
+  const buttons = [...options.querySelectorAll("button")];
+  if (event.key === "Escape") {
+    closeActionMenus();
+    transferMenuButton.focus({ preventScroll: true });
+  } else if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
+    event.preventDefault();
+    if (options.hidden) toggleActionMenu(transferMenu);
+    const index = buttons.indexOf(document.activeElement);
+    const next = event.key === "Home" ? 0 : event.key === "End" ? buttons.length - 1 :
+      event.key === "ArrowDown" ? (index + 1) % buttons.length : (index <= 0 ? buttons.length : index) - 1;
+    buttons[next].focus();
+  } else if (event.key === "Tab") {
+    // Let the browser move focus before hiding the menu.
+    setTimeout(closeActionMenus, 0);
+  }
+});
 
 function getCategories() {
   return [...new Set(tasks.map((task) => task.category).filter(Boolean))]

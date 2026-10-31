@@ -32,6 +32,15 @@
       <button id="themeToggle" class="theme-toggle" aria-label="Toggle theme" title="Toggle dark/light mode">
         ☀️
       </button>
+      <div id="transferMenu" class="action-menu transfer-menu">
+        <button id="transferMenuButton" class="action-menu-button" type="button"
+          aria-label="Import or export list" title="Import or export list"
+          aria-haspopup="menu" aria-expanded="false" aria-controls="transferOptions">⋮</button>
+        <div id="transferOptions" class="action-menu-options" role="menu" hidden>
+          <button id="exportList" type="button" role="menuitem">Export list</button>
+          <button id="importList" type="button" role="menuitem">Import list</button>
+        </div>
+      </div>
     </div>
     <p class="subtitle">Keep track of what you need and check off each item as you shop.</p>
 
@@ -67,6 +76,20 @@
         <div class="dialog-actions">
           <button id="cancelCategory" type="button">Cancel</button>
           <button type="submit">Save</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="importDialog" aria-labelledby="importTitle" aria-describedby="importDescription">
+      <form id="importForm" class="category-form">
+        <h2 id="importTitle">Import list</h2>
+        <p id="importDescription">Add items from a shared list without deleting yours. Matching names keep your existing item, category and status. Repeated names in the file are only added once.</p>
+        <label for="importFile">Choose an exported list (.json, up to 5 MB)</label>
+        <input id="importFile" type="file" accept=".json,application/json" aria-describedby="importFeedback" />
+        <p id="importFeedback" role="status" aria-live="polite">Choose a file to preview its contents.</p>
+        <div class="dialog-actions">
+          <button id="cancelImport" type="button">Cancel</button>
+          <button id="confirmImport" type="submit" disabled>Import</button>
         </div>
       </form>
     </dialog>
