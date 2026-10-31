@@ -61,7 +61,21 @@ h1 {
 
 .app-header h1 {
   flex: 1;
+  min-width: 0;
   margin: 0;
+}
+
+.transfer-menu {
+  flex-shrink: 0;
+  z-index: 30;
+}
+
+.app-header .action-menu-button {
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  border-radius: 8px;
+  font-size: 20px;
 }
 
 .install-button {
@@ -226,7 +240,7 @@ body.light-mode .task-input:focus {
 .action-menu-button:focus-visible,
 .action-menu-options button:focus-visible,
 .add-button:focus-visible {
-  outline: 3px solid rgba(17, 24, 39, 0.18);
+  outline: 3px solid var(--button-dark);
   outline-offset: 2px;
 }
 
@@ -246,6 +260,7 @@ body.light-mode .task-input:focus {
 .action-menu-options button {
   display: block;
   width: 100%;
+  min-height: 44px;
   padding: 9px 12px;
   border: none;
   border-radius: 6px;
@@ -494,7 +509,8 @@ input:focus-visible {
   outline-offset: 3px;
 }
 
-#categoryDialog {
+#categoryDialog,
+#importDialog {
   width: min(440px, calc(100% - 32px));
   max-height: calc(100dvh - 40px);
   padding: 24px;
@@ -505,7 +521,8 @@ input:focus-visible {
   box-shadow: 0 24px 80px var(--shadow-color);
 }
 
-#categoryDialog::backdrop {
+#categoryDialog::backdrop,
+#importDialog::backdrop {
   background: rgba(0, 0, 0, 0.6);
 }
 
@@ -546,8 +563,47 @@ input:focus-visible {
   margin-top: 12px;
 }
 
+.dialog-actions button {
+  min-height: 44px;
+  padding: 10px 16px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.dialog-actions button[type="submit"] {
+  background: var(--button-dark);
+  color: var(--bg-primary);
+}
+
+.dialog-actions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+#importDescription,
+#importFeedback {
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+#importFile::file-selector-button {
+  margin-right: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
 @media (max-width: 400px) {
   body { padding: 24px 12px; }
+  .app-header { gap: 8px; }
+  .app-header h1 { font-size: 24px; }
   .task-list { grid-template-columns: minmax(0, 1fr); }
   .task-input { min-width: 0; }
 }

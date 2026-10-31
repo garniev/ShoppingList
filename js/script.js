@@ -1,28 +1,20 @@
 const STORAGE_KEY = "task-done-items";
-const THEME_KEY = "theme-preference";
 const VIEW_KEY = "task-view-preference";
+const MAX_IMPORT_BYTES = 5 * 1024 * 1024;
 
 const taskForm = document.getElementById("taskForm");
 const taskInput = document.getElementById("taskInput");
 const taskList = document.getElementById("taskList");
-const themeToggle = document.getElementById("themeToggle");
-const installButton = document.getElementById("installButton");
 const categoryDialog = document.getElementById("categoryDialog");
 const categorySelect = document.getElementById("categorySelect");
 const newCategoryInput = document.getElementById("newCategory");
 const appStatus = document.getElementById("appStatus");
-
-function updateTaskFormStickyState() {
-  if (taskForm.getBoundingClientRect().top <= 1) {
-    taskForm.classList.add("is-sticky");
-  } else {
-    taskForm.classList.remove("is-sticky");
-  }
-}
-
-window.addEventListener("scroll", updateTaskFormStickyState, { passive: true });
-window.addEventListener("resize", updateTaskFormStickyState);
-updateTaskFormStickyState();
+const transferMenu = document.getElementById("transferMenu");
+const transferMenuButton = document.getElementById("transferMenuButton");
+const importDialog = document.getElementById("importDialog");
+const importFile = document.getElementById("importFile");
+const importFeedback = document.getElementById("importFeedback");
+const confirmImport = document.getElementById("confirmImport");
 
 let tasks = loadTasks();
 let draggedTaskId = null;
@@ -31,6 +23,8 @@ let currentView = loadView();
 let categoryTaskId = null;
 let categoryReturnFocus = null;
 let cancelPendingPress = () => {};
+let pendingImport = null;
+let importReadToken = 0;
 
 function loadView() {
   try {
@@ -44,16 +38,145 @@ function persistValue(key, value) {
   try {
     localStorage.setItem(key, value);
     appStatus.hidden = true;
+    return true;
   } catch (error) {
     appStatus.textContent = "Changes could not be saved on this device. Keep this page open to avoid losing them.";
     appStatus.hidden = false;
     console.error("Could not save changes:", error);
+    return false;
   }
 }
 
-function normalizeCategory(value) {
-  return typeof value === "string" ? value.trim().replace(/\s+/g, " ") || null : null;
+function showTransferStatus(message) {
+  appStatus.textContent = message;
+  appStatus.hidden = false;
 }
+
+function exportList() {
+  closeActionMenus();
+  let url;
+  let link;
+  try {
+    const data = createListExport();
+    const filename = `shopping-list-${data.exportedAt.slice(0, 10)}.json`;
+    url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }));
+    link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+  } catch (error) {
+    showTransferStatus("The list could not be exported. Please try again.");
+    console.error("Could not export list:", error);
+  } finally {
+    link?.remove();
+    // Allow browsers (including mobile browsers) to start reading the download.
+    if (url) setTimeout(() => URL.revokeObjectURL(url), 1000);
+    transferMenuButton.focus({ preventScroll: true });
+  }
+}
+
+function resetImport() {
+  importReadToken++;
+  pendingImport = null;
+  importFile.value = "";
+  confirmImport.disabled = true;
+  importFeedback.textContent = "Choose a file to preview its contents.";
+}
+
+function openImportDialog() {
+  cancelPendingPress();
+  closeActionMenus();
+  if (importDialog.open) return;
+  resetImport();
+  importDialog.showModal();
+  importFile.focus();
+}
+
+async function previewImportFile() {
+  const token = ++importReadToken;
+  pendingImport = null;
+  confirmImport.disabled = true;
+  const file = importFile.files?.[0];
+  if (!file) {
+    importFeedback.textContent = "Choose a file to preview its contents.";
+    return;
+  }
+  importFeedback.textContent = "Reading list…";
+  try {
+    if (file.size > MAX_IMPORT_BYTES) throw new Error("This file is too large. Choose a JSON export of up to 5 MB.");
+    const contents = await file.text();
+    if (token !== importReadToken || !importDialog.open) return;
+    const imported = parseListImport(contents);
+    const { additions, skipped } = planListImport(imported);
+    const completed = imported.filter((item) => item.completed).length;
+    const categoryCount = new Set(imported.map((item) => item.category?.toLocaleLowerCase("es")).filter(Boolean)).size;
+    importFeedback.textContent = `${imported.length} items: ${imported.length - completed} pending, ${completed} completed, ${categoryCount} categories. ` +
+      `${additions.length} will be added; ${skipped} matching or repeated names will be skipped.` +
+      (additions.length ? " Your existing items will not change." : " Nothing new to import.");
+    pendingImport = imported;
+    confirmImport.disabled = additions.length === 0;
+  } catch (error) {
+    if (token !== importReadToken || !importDialog.open) return;
+    importFeedback.textContent = error instanceof Error ? error.message : "The file could not be read. Please try again.";
+  }
+}
+
+function confirmListImport(event) {
+  event.preventDefault();
+  if (!importDialog.open || !pendingImport || confirmImport.disabled) return;
+  confirmImport.disabled = true;
+  try {
+    // Recheck against the current list, not the snapshot used for the preview.
+    const { additions, skipped } = planListImport(pendingImport);
+    if (additions.length) {
+      const candidate = [...tasks, ...additions.map((item) => ({ ...item, id: crypto.randomUUID() }))];
+      if (!persistValue(STORAGE_KEY, JSON.stringify(candidate))) {
+        importFeedback.textContent = "The list could not be saved on this device. Nothing was imported. Free some storage and try again.";
+        confirmImport.disabled = false;
+        return;
+      }
+      tasks = candidate;
+      renderTasks();
+    }
+    importDialog.close();
+  } catch (error) {
+    importFeedback.textContent = "The list could not be imported. Please try again.";
+    confirmImport.disabled = false;
+    console.error("Could not import list:", error);
+  }
+}
+
+transferMenuButton.addEventListener("click", () => toggleActionMenu(transferMenu));
+document.getElementById("exportList").addEventListener("click", exportList);
+document.getElementById("importList").addEventListener("click", openImportDialog);
+importFile.addEventListener("change", previewImportFile);
+document.getElementById("importForm").addEventListener("submit", confirmListImport);
+document.getElementById("cancelImport").addEventListener("click", () => importDialog.close());
+importDialog.addEventListener("close", () => {
+  resetImport();
+  transferMenuButton.focus({ preventScroll: true });
+});
+
+// Support the standard arrow-key navigation pattern for the global menu.
+transferMenu.addEventListener("keydown", (event) => {
+  const options = transferMenu.querySelector(".action-menu-options");
+  const buttons = [...options.querySelectorAll("button")];
+  if (event.key === "Escape") {
+    closeActionMenus();
+    transferMenuButton.focus({ preventScroll: true });
+  } else if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
+    event.preventDefault();
+    if (options.hidden) toggleActionMenu(transferMenu);
+    const index = buttons.indexOf(document.activeElement);
+    const next = event.key === "Home" ? 0 : event.key === "End" ? buttons.length - 1 :
+      event.key === "ArrowDown" ? (index + 1) % buttons.length : (index <= 0 ? buttons.length : index) - 1;
+    buttons[next].focus();
+  } else if (event.key === "Tab") {
+    // Let the browser move focus before hiding the menu.
+    setTimeout(closeActionMenus, 0);
+  }
+});
 
 function getCategories() {
   return [...new Set(tasks.map((task) => task.category).filter(Boolean))]
@@ -115,79 +238,6 @@ document.querySelectorAll("[data-view]").forEach((button) => {
     renderTasks();
   });
 });
-
-function registerServiceWorker() {
-  if (!("serviceWorker" in navigator)) {
-    return;
-  }
-
-  window.addEventListener("load", () => {
-    navigator.serviceWorker.register("./sw.js").catch((error) => {
-      console.error("Could not register service worker:", error);
-    });
-  });
-}
-
-function setupInstallPrompt() {
-  if (!installButton) {
-    return;
-  }
-
-  window.addEventListener("beforeinstallprompt", (event) => {
-    event.preventDefault();
-    installPromptEvent = event;
-    installButton.hidden = false;
-  });
-
-  installButton.addEventListener("click", async () => {
-    if (!installPromptEvent) {
-      return;
-    }
-
-    installPromptEvent.prompt();
-    await installPromptEvent.userChoice;
-    installPromptEvent = null;
-    installButton.hidden = true;
-  });
-
-  window.addEventListener("appinstalled", () => {
-    installPromptEvent = null;
-    installButton.hidden = true;
-  });
-}
-
-registerServiceWorker();
-setupInstallPrompt();
-
-// Theme initialization - dark mode by default
-function initTheme() {
-  const savedTheme = localStorage.getItem(THEME_KEY);
-  const isDark = savedTheme !== "light";
-
-  if (isDark) {
-    document.body.classList.remove("light-mode");
-    themeToggle.textContent = "☀️";
-  } else {
-    document.body.classList.add("light-mode");
-    themeToggle.textContent = "🌙";
-  }
-}
-
-function toggleTheme() {
-  const isCurrentlyLight = document.body.classList.contains("light-mode");
-  if (isCurrentlyLight) {
-    document.body.classList.remove("light-mode");
-    localStorage.setItem(THEME_KEY, "dark");
-    themeToggle.textContent = "☀️";
-  } else {
-    document.body.classList.add("light-mode");
-    localStorage.setItem(THEME_KEY, "light");
-    themeToggle.textContent = "🌙";
-  }
-}
-
-themeToggle.addEventListener("click", toggleTheme);
-initTheme();
 
 function loadTasks() {
   try {
@@ -262,7 +312,7 @@ function toggleTask(id) {
   renderTasks();
   if (restoreFocus) {
     [...taskList.querySelectorAll(".task")]
-      .find((element) => element.dataset.taskId === id)?.querySelector(".task-text").focus();
+      .find((element) => element.dataset.taskId === id)?.querySelector(".task-text").focus({ preventScroll: true });
   }
 }
 
@@ -488,10 +538,6 @@ function setupLongPress(element, taskId) {
     openCategoryDialog(taskId, element.querySelector(".category-button"));
   });
 }
-
-window.addEventListener("blur", () => cancelPendingPress());
-document.addEventListener("scroll", () => cancelPendingPress(), true);
-document.addEventListener("visibilitychange", () => cancelPendingPress());
 
 function renderTasks() {
   cancelPendingPress();
