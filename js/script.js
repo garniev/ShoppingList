@@ -262,7 +262,7 @@ function toggleTask(id) {
   renderTasks();
   if (restoreFocus) {
     [...taskList.querySelectorAll(".task")]
-      .find((element) => element.dataset.taskId === id)?.querySelector(".task-text").focus();
+      .find((element) => element.dataset.taskId === id)?.querySelector(".task-text").focus({ preventScroll: true });
   }
 }
 

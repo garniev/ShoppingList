@@ -86,7 +86,10 @@ class Element {
     ]);
   }
   querySelector(selector) { return this.querySelectorAll(selector)[0]; }
-  focus() { this.document.activeElement = this; }
+  focus(options) {
+    this.document.activeElement = this;
+    this.focusOptions = options;
+  }
   getBoundingClientRect() { return { top: 0, height: 0 }; }
   showModal() { this.open = true; }
   close() { this.open = false; this.dispatch("close"); }
@@ -198,6 +201,17 @@ test("only pending tasks grouped, uncategorized last, completed list remains uni
   assert.equal(app.ids.taskList.querySelectorAll(".category-group-header").length, 2);
   app.run('toggleTask("c"); setAllTasksCompleted(true); setAllTasksCompleted(false)');
   assert.equal(app.snapshot().find((task) => task.id === "c").category, "Home");
+});
+
+test("restoring focus after reactivating a task does not request scrolling", () => {
+  const app = setup([item("a", null, true)]);
+  app.cards()[0].querySelector(".task-text").focus();
+
+  app.run('toggleTask("a")');
+
+  const focusedTask = app.document.activeElement;
+  assert.equal(focusedTask.closest(".task").dataset.taskId, "a");
+  assert.equal(focusedTask.focusOptions.preventScroll, true);
 });
 
 test("reactivating by text preserves category; views persist independently", () => {
