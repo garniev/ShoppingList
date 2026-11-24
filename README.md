@@ -50,6 +50,51 @@ node --test tests/categories.test.cjs
 
 The tests cover multiline autocomplete, suggestion selection and deduplication, category persistence and normalization, item grouping, views, item reordering, export/import validation and merging, download handling, cancellation, stale file reads, persistence failures, and some interaction behavior. They use a simulated DOM, so native downloads, file pickers, focus, the UI and gestures should also be checked in a browser.
 
+### Browser tests with Playwright
+
+The app still needs no build or runtime packages. Browser tests require development dependencies; use Node.js 24 (also used in CI):
+
+```sh
+npm ci
+npx playwright install chromium webkit
+npm run test:e2e
+```
+
+On Linux, use `npx playwright install --with-deps chromium webkit` to install browser system dependencies too. Playwright downloads its own browsers; existing Chrome or Safari installations are not required. Firefox is not installed or tested.
+
+Playwright starts and stops a local HTTP server at `http://127.0.0.1:4173`. No separate server is needed. It can reuse a server already running there locally; make sure it serves this checkout. CI always starts a fresh server. Each test gets a clean browser context, with no shared tasks, preferences or caches. Seed helpers write once and then reload, so later reloads genuinely test persistence.
+
+```sh
+npm run test:unit
+npm run test:e2e -- --project=chromium
+npm run test:e2e -- --project=mobile-webkit
+npm run test:e2e -- --project=pwa-chromium
+npm run test:e2e:ui
+npm run test:e2e:debug -- tests/e2e/categories.spec.cjs --project=chromium
+npm run test:e2e:report
+```
+
+`npm test` runs unit tests followed by the browser suite. The browser projects are `chromium`, `webkit`, `mobile-chromium` (Pixel 7), `mobile-webkit` (iPhone 13), and `pwa-chromium`. Functional projects block service workers to avoid cache interference; the isolated PWA project allows them and waits for worker control before going offline.
+
+| Functionality | Spec under `tests/e2e/` | Projects |
+| --- | --- | --- |
+| Empty state, multiline entry, duplicates, completion, deletion, bulk actions, storage warnings | `tasks.spec.cjs` | Desktop and mobile |
+| Matching suggestions, current draft line, reactivation, dismissal and keyboard selection | `autocomplete.spec.cjs` | Desktop and mobile; tap only on mobile |
+| Category creation, selection, normalization, removal, cancellation, grouping and saved view | `categories.spec.cjs` | Desktop and mobile |
+| JSON download/round-trip, merging, preview, cancellation, invalid files, size limit and failed writes | `transfer.spec.cjs` | Desktop and mobile |
+| Menus, keyboard, focus, theme, sticky form, viewport fit and dialog layout | `interactions.spec.cjs` | Desktop and mobile |
+| Native drag-and-drop, destination state, category restrictions and mouse hold | `interactions.spec.cjs` | Desktop only |
+| Tap selection and simulated touch-pointer hold/cancellation | Autocomplete and interactions specs | Mobile only |
+| Offline reload, local edits, offline files, navigation fallback, cache cleanup, manifest and simulated install events | `pwa.spec.cjs` | PWA Chromium only |
+
+Tests intentionally skip mouse-only gestures on mobile projects and touch-only interactions on desktop. Touch-pointer hold tests dispatch synthetic pointer events and are integration checks, not proof of native long-press behavior on a phone. WebKit keyboard tests use Option+Tab on macOS, where the default Tab behavior does not visit buttons. Exhaustive parsing, composition and stale-file-read cases remain in the unit suite.
+
+The HTML report is written to `playwright-report/`. Failures retain screenshots, videos and traces in `test-results/`; the layout test also attaches desktop/mobile screenshots. To inspect a trace, run `npx playwright show-trace <path-to-trace.zip>`. Local runs have no retries; CI retries once and reports flaky results. Avoid arbitrary sleeps: use visible state, browser events and Playwright's retrying assertions. Gesture cancellation uses the controlled page clock.
+
+GitHub Actions runs unit and browser tests as independent jobs on pushes and pull requests, so failures in either remain visible without preventing the other suite from running. Reports and failure artifacts are retained for 14 days. The browser job covers both engines, both mobile profiles and the PWA project, using two workers.
+
+**Manual checks:** install and launch the PWA on actual desktop/Android/iOS devices; check native touch holds and scrolling, downloads/file sharing and the on-screen keyboard. Emulated iPhone WebKit is not a real iPhone Safari session. Installation events are simulated, and cache cleanup is tested, but upgrading between two deployed app versions is not. These tests are not a complete accessibility audit or a remote synchronization test; the app stores data locally.
+
 ## Project structure
 
 - `index.html`: interface structure and PWA resources.
@@ -61,3 +106,6 @@ The tests cover multiline autocomplete, suggestion selection and deduplication, 
 - `pwa/manifest.json`: PWA installation metadata.
 - `assets/`: app icons.
 - `tests/categories.test.cjs`: automated tests.
+- `tests/e2e/`: Playwright fixtures and browser scenarios.
+- `playwright.config.cjs`: browser projects, isolation, server and reporting.
+- `.github/workflows/e2e.yml`: unit and browser CI jobs.

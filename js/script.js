@@ -70,6 +70,7 @@ function exportList() {
     link.download = filename;
     document.body.appendChild(link);
     link.click();
+    showTransferStatus(`Includes all ${data.items.length} items, pending and completed, with their categories.`);
   } catch (error) {
     showTransferStatus("The list could not be exported. Please try again.");
     console.error("Could not export list:", error);
