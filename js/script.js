@@ -4,6 +4,8 @@ const MAX_IMPORT_BYTES = 5 * 1024 * 1024;
 
 const taskForm = document.getElementById("taskForm");
 const taskInput = document.getElementById("taskInput");
+const taskEntry = document.getElementById("taskEntry");
+const taskSuggestions = document.getElementById("taskSuggestions");
 const taskList = document.getElementById("taskList");
 const categoryDialog = document.getElementById("categoryDialog");
 const categorySelect = document.getElementById("categorySelect");
@@ -25,6 +27,9 @@ let categoryReturnFocus = null;
 let cancelPendingPress = () => {};
 let pendingImport = null;
 let importReadToken = 0;
+let suggestionContext = null;
+let composingTaskInput = false;
+let dismissedTaskQuery = null;
 
 function loadView() {
   try {
@@ -65,6 +70,7 @@ function exportList() {
     link.download = filename;
     document.body.appendChild(link);
     link.click();
+    showTransferStatus(`Includes all ${data.items.length} items, pending and completed, with their categories.`);
   } catch (error) {
     showTransferStatus("The list could not be exported. Please try again.");
     console.error("Could not export list:", error);
@@ -268,8 +274,6 @@ function saveTasks() {
 }
 
 function addTasks(texts) {
-  const newTasks = [];
-
   texts.forEach((text) => {
     const normalizedText = text.trim().toLocaleLowerCase("es");
     const existingTask = tasks.find(
@@ -282,7 +286,7 @@ function addTasks(texts) {
       return;
     }
 
-    newTasks.push({
+    tasks.push({
       id: crypto.randomUUID(),
       text,
       completed: false,
@@ -290,7 +294,6 @@ function addTasks(texts) {
     });
   });
 
-  tasks.push(...newTasks);
   saveTasks();
   renderTasks();
 }
@@ -300,6 +303,82 @@ function getTaskTextsFromInput(value) {
     .split(/\r?\n/)
     .map((text) => text.trim())
     .filter(Boolean);
+}
+
+function getTaskInputLine(value, selectionStart, selectionEnd = selectionStart) {
+  if (value.slice(selectionStart, selectionEnd).includes("\n")) return null;
+  const start = selectionStart === 0 ? 0 : value.lastIndexOf("\n", selectionStart - 1) + 1;
+  const nextBreak = value.indexOf("\n", selectionStart);
+  const end = nextBreak === -1 ? value.length : nextBreak;
+  return { start, end, text: value.slice(start, end) };
+}
+
+function getTaskSuggestions(query) {
+  const normalizedQuery = query.trim().toLocaleLowerCase("es");
+  if (!normalizedQuery) return [];
+  const matches = new Map();
+  tasks.forEach((task) => {
+    const key = task.text.trim().toLocaleLowerCase("es");
+    if (!key.includes(normalizedQuery)) return;
+    const existing = matches.get(key);
+    if (!existing || (existing.completed && !task.completed)) matches.set(key, task);
+  });
+  return [...matches.values()];
+}
+
+function closeTaskSuggestions() {
+  taskSuggestions.hidden = true;
+  suggestionContext = null;
+}
+
+function updateTaskSuggestions() {
+  if (composingTaskInput || document.activeElement?.closest(".task-entry") !== taskEntry) {
+    closeTaskSuggestions();
+    return;
+  }
+  const query = JSON.stringify([taskInput.value, taskInput.selectionStart, taskInput.selectionEnd]);
+  if (query === dismissedTaskQuery) return;
+  dismissedTaskQuery = null;
+  const line = getTaskInputLine(taskInput.value, taskInput.selectionStart, taskInput.selectionEnd);
+  const matches = line ? getTaskSuggestions(line.text) : [];
+  if (!matches.length) {
+    closeTaskSuggestions();
+    return;
+  }
+  const signature = JSON.stringify(matches.map((task) => [task.id, task.text]));
+  const unchanged = !taskSuggestions.hidden && suggestionContext?.signature === signature;
+  suggestionContext = { ...line, value: taskInput.value, signature };
+  if (unchanged) return;
+  taskSuggestions.replaceChildren();
+  matches.forEach((task) => {
+    const option = document.createElement("button");
+    option.type = "button";
+    option.className = "task-suggestion";
+    option.textContent = task.text;
+    option.addEventListener("pointerdown", (event) => {
+      if (event.button === 0) event.preventDefault();
+    });
+    option.addEventListener("click", () => selectTaskSuggestion(task.id));
+    taskSuggestions.appendChild(option);
+  });
+  taskSuggestions.hidden = false;
+}
+
+function selectTaskSuggestion(id) {
+  const context = suggestionContext;
+  const task = tasks.find((candidate) => candidate.id === id);
+  if (composingTaskInput || !context || context.value !== taskInput.value || !task) {
+    closeTaskSuggestions();
+    return;
+  }
+  const key = task.text.trim().toLocaleLowerCase("es");
+  const pending = tasks.some((candidate) => !candidate.completed &&
+    candidate.text.trim().toLocaleLowerCase("es") === key);
+  if (!pending) addTasks([task.text]);
+  taskInput.value = context.value.slice(0, context.start) + context.value.slice(context.end);
+  taskInput.focus({ preventScroll: true });
+  taskInput.setSelectionRange(context.start, context.start);
+  closeTaskSuggestions();
 }
 
 function toggleTask(id) {
@@ -541,6 +620,7 @@ function setupLongPress(element, taskId) {
 
 function renderTasks() {
   cancelPendingPress();
+  updateTaskSuggestions();
   document.querySelectorAll("[data-view]").forEach((button) => {
     button.setAttribute("aria-pressed", String(button.dataset.view === currentView));
   });
@@ -689,6 +769,31 @@ function renderTasks() {
   });
 }
 
+for (const name of ["input", "click", "select", "selectionchange"]) {
+  taskInput.addEventListener(name, updateTaskSuggestions);
+}
+taskInput.addEventListener("focus", () => {
+  dismissedTaskQuery = null;
+  updateTaskSuggestions();
+});
+taskInput.addEventListener("keyup", (event) => {
+  if (event.key.startsWith("Arrow") || event.key === "Home" || event.key === "End") updateTaskSuggestions();
+});
+taskInput.addEventListener("compositionstart", () => {
+  composingTaskInput = true;
+  closeTaskSuggestions();
+});
+taskInput.addEventListener("compositionend", () => {
+  composingTaskInput = false;
+  updateTaskSuggestions();
+});
+document.addEventListener("selectionchange", () => {
+  if (document.activeElement === taskInput) updateTaskSuggestions();
+});
+taskEntry.addEventListener("focusout", (event) => {
+  if (event.relatedTarget?.closest(".task-entry") !== taskEntry) closeTaskSuggestions();
+});
+
 taskForm.addEventListener("submit", (event) => {
   event.preventDefault();
 
@@ -702,6 +807,7 @@ taskForm.addEventListener("submit", (event) => {
 
   taskInput.value = "";
   taskInput.focus();
+  closeTaskSuggestions();
 });
 
 taskList.addEventListener("click", (event) => {
@@ -737,6 +843,7 @@ taskList.addEventListener("click", (event) => {
 });
 
 document.addEventListener("click", (event) => {
+  if (event.target.closest(".task-entry") !== taskEntry) closeTaskSuggestions();
   if (!event.target.closest(".action-menu")) {
     closeActionMenus();
   }
@@ -745,6 +852,11 @@ document.addEventListener("click", (event) => {
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") {
     closeActionMenus();
+    if (!taskSuggestions.hidden) {
+      if (document.activeElement?.closest(".task-entry") === taskEntry) taskInput.focus({ preventScroll: true });
+      closeTaskSuggestions();
+      dismissedTaskQuery = JSON.stringify([taskInput.value, taskInput.selectionStart, taskInput.selectionEnd]);
+    }
   }
 });
 
