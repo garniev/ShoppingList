@@ -5,6 +5,7 @@ A simple progressive web app (PWA) for creating and organizing a shopping list. 
 ## Features
 
 - Add one or more items; enter each item on a separate line.
+- Get matching pending and completed items below the input as you type. Suggestions use the whole line at the cursor and ignore case. Selecting one returns it to pending without duplicating an existing pending item, preserves its category, and clears only that draft line. Use click, touch, or Tab then Enter to select; Escape dismisses suggestions. Enter in the input still inserts a new line.
 - Mark items as bought or pending, and delete them.
 - Assign existing categories or create new ones.
 - Switch between list view and a view grouped by category.
@@ -47,7 +48,7 @@ The automated tests require no additional packages, but they do require Node.js.
 node --test tests/categories.test.cjs
 ```
 
-The tests cover category persistence and normalization, item grouping, views, item reordering, export/import validation and merging, download handling, cancellation, stale file reads, persistence failures, and some interaction behavior. They use a simulated DOM, so native downloads, file pickers, the UI and gestures should also be checked in a browser.
+The tests cover multiline autocomplete, suggestion selection and deduplication, category persistence and normalization, item grouping, views, item reordering, export/import validation and merging, download handling, cancellation, stale file reads, persistence failures, and some interaction behavior. They use a simulated DOM, so native downloads, file pickers, focus, the UI and gestures should also be checked in a browser.
 
 ## Project structure
 

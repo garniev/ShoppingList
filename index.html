@@ -45,13 +45,18 @@
     <p class="subtitle">Keep track of what you need and check off each item as you shop.</p>
 
     <form id="taskForm" class="task-form">
-      <textarea
-        id="taskInput"
-        class="task-input"
-        placeholder="Add an item..."
-        autocomplete="off"
-        rows="2"
-      ></textarea>
+      <div id="taskEntry" class="task-entry">
+        <textarea
+          id="taskInput"
+          class="task-input"
+          placeholder="Add an item..."
+          aria-label="Add items"
+          aria-controls="taskSuggestions"
+          autocomplete="off"
+          rows="2"
+        ></textarea>
+        <div id="taskSuggestions" class="task-suggestions" role="group" aria-label="Matching items" hidden></div>
+      </div>
 
       <button class="add-button" type="submit" aria-label="Add item" title="Add item">
         ＋

@@ -169,8 +169,15 @@ body.light-mode .theme-toggle:focus-visible {
   border-bottom: 1px solid var(--border-color);
 }
 
-.task-input {
+.task-entry {
+  position: relative;
   flex: 1;
+  min-width: 0;
+}
+
+.task-input {
+  display: block;
+  width: 100%;
   padding: 14px 16px;
   border: 1px solid var(--border-color);
   border-radius: 10px;
@@ -192,6 +199,45 @@ body.light-mode .theme-toggle:focus-visible {
 body.light-mode .task-input:focus {
   border-color: #111827;
   box-shadow: 0 0 0 3px rgba(17, 24, 39, 0.08);
+}
+
+.task-suggestions {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: min(240px, 35vh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 4px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--bg-primary);
+  box-shadow: 0 8px 20px var(--shadow-color);
+}
+
+.task-suggestion {
+  display: block;
+  width: 100%;
+  padding: 12px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.task-suggestion:hover,
+.task-suggestion:focus-visible {
+  background: var(--border-light);
+}
+
+.task-suggestion:focus-visible {
+  outline: 2px solid var(--button-dark);
+  outline-offset: -2px;
 }
 
 .add-button {

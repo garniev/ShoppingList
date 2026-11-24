@@ -115,6 +115,10 @@ class Element {
     this.document.activeElement = this;
     this.focusOptions = options;
   }
+  setSelectionRange(start, end) {
+    this.selectionStart = start;
+    this.selectionEnd = end;
+  }
   getBoundingClientRect() { return { top: 0, height: 0 }; }
   showModal() { this.open = true; }
   close() { this.open = false; this.dispatch("close"); }
@@ -132,7 +136,7 @@ function setup(initial = [], view = "list") {
   document.body = new Element("body", document);
   document.append(document.body);
   const ids = {};
-  for (const id of ["taskForm", "taskInput", "taskList", "themeToggle", "installButton",
+  for (const id of ["taskForm", "taskInput", "taskEntry", "taskSuggestions", "taskList", "themeToggle", "installButton",
     "categoryDialog", "categorySelect", "newCategory", "appStatus", "categoryTaskName",
     "categoryForm", "cancelCategory", "transferMenu", "transferMenuButton", "exportList",
     "importList", "importDialog", "importFile", "importFeedback", "confirmImport",
@@ -145,6 +149,11 @@ function setup(initial = [], view = "list") {
     document.body.append(ids[id]);
   }
   ids.appStatus.hidden = true;
+  ids.taskEntry.className = "task-entry";
+  ids.taskEntry.append(ids.taskInput, ids.taskSuggestions);
+  ids.taskForm.append(ids.taskEntry);
+  ids.taskInput.setSelectionRange(0, 0);
+  ids.taskSuggestions.hidden = true;
   ids.transferMenu.className = "action-menu";
   ids.transferMenuButton.className = "action-menu-button";
   ids.transferMenuButton.setAttribute("aria-expanded", "false");
@@ -256,6 +265,195 @@ function assertImportReset(app) {
   assert.equal(app.ids.confirmImport.disabled, true);
   assert.equal(app.ids.importFeedback.textContent, "Choose a file to preview its contents.");
 }
+
+test("autocomplete uses the whole logical cursor line and rejects multiline selections", () => {
+  const app = setup();
+  const value = "Bread\n  MiLK  \nEggs\n";
+  const line = (start, end = start) => plain(app.run(
+    `getTaskInputLine(${JSON.stringify(value)}, ${start}, ${end})`
+  ));
+  assert.deepEqual(line(0), { start: 0, end: 5, text: "Bread" });
+  assert.deepEqual(line(5), { start: 0, end: 5, text: "Bread" });
+  assert.deepEqual(line(10), { start: 6, end: 14, text: "  MiLK  " });
+  assert.deepEqual(line(16), { start: 15, end: 19, text: "Eggs" });
+  assert.deepEqual(line(value.length), { start: 20, end: 20, text: "" });
+  assert.deepEqual(line(8, 12), { start: 6, end: 14, text: "  MiLK  " });
+  assert.equal(line(3, 10), null);
+  assert.deepEqual(plain(app.run('getTaskInputLine("", 0)')), { start: 0, end: 0, text: "" });
+  assert.deepEqual(plain(app.run('getTaskInputLine("\\nMilk", 0)')), { start: 0, end: 0, text: "" });
+});
+
+test("autocomplete matches substrings in both states and prefers pending duplicate names", () => {
+  const app = setup([
+    { id: "done", text: "Milk", completed: true },
+    { id: "other", text: "Almond milk", completed: true },
+    { id: "pending", text: " MILK ", completed: false },
+    { id: "accent", text: "Café", completed: false }
+  ]);
+  assert.deepEqual(plain(app.run('getTaskSuggestions("  mIL  ").map(task => task.id)')), ["pending", "other"]);
+  assert.deepEqual(plain(app.run('getTaskSuggestions(" ")')), []);
+  assert.deepEqual(plain(app.run('getTaskSuggestions("missing")')), []);
+  assert.deepEqual(plain(app.run('getTaskSuggestions("cafe")')), []);
+  assert.deepEqual(plain(app.run('getTaskSuggestions("CAFÉ").map(task => task.id)')), ["accent"]);
+});
+
+test("multiline submission adds repeated new names only once, including case and whitespace variants", () => {
+  const app = setup();
+  app.ids.taskInput.value = "aaaa\naaaa\naaaa\n AAAA \n\nBread\n bread ";
+  app.ids.taskForm.dispatch("submit");
+  assert.deepEqual(app.snapshot().map((task) => task.text), ["aaaa", "Bread"]);
+  assert.equal(app.snapshot().every((task) => task.completed === false), true);
+  assert.deepEqual(JSON.parse(app.storage.get("task-done-items")), app.snapshot());
+  assert.equal(app.ids.taskInput.value, "");
+  app.ids.taskInput.value = "aaaa\nAAAA\n bread";
+  app.ids.taskForm.dispatch("submit");
+  assert.deepEqual(app.snapshot().map((task) => task.text), ["aaaa", "Bread"]);
+});
+
+test("repeated names reactivate existing tasks once and preserve their identity and category", () => {
+  const original = { id: "milk", text: "Milk", completed: true, category: "Dairy" };
+  const app = setup([original]);
+  app.ids.taskInput.value = "milk\n MILK \nMilk\nEggs\neggs";
+  app.ids.taskForm.dispatch("submit");
+  assert.equal(app.snapshot().length, 2);
+  assert.deepEqual(app.snapshot()[0], { ...original, completed: false });
+  assert.equal(app.snapshot()[1].text, "Eggs");
+});
+
+function typeTaskQuery(app, value, start = value.length, end = start) {
+  app.ids.taskInput.value = value;
+  app.ids.taskInput.focus();
+  app.ids.taskInput.setSelectionRange(start, end);
+  app.ids.taskInput.dispatch("input");
+  return app.ids.taskSuggestions.children;
+}
+
+test("autocomplete selection reactivates only its line and preserves task fields and other draft lines", () => {
+  const app = setup([{ id: "milk", text: "Milk", completed: true, category: "Dairy" }]);
+  const options = typeTaskQuery(app, "Bread\nmi\nEggs", 8);
+  assert.equal(app.ids.taskSuggestions.hidden, false);
+  assert.equal(options.length, 1);
+  assert.equal(options[0].textContent, "Milk");
+  assert.equal(options[0].type, "button");
+  assert.equal(options[0].dispatch("pointerdown", { button: 0 }).prevented, true);
+  options[0].click();
+  assert.deepEqual(app.snapshot(), [{ id: "milk", text: "Milk", completed: false, category: "Dairy" }]);
+  assert.deepEqual(JSON.parse(app.storage.get("task-done-items")), app.snapshot());
+  assert.equal(app.ids.taskInput.value, "Bread\n\nEggs");
+  assert.equal(app.ids.taskInput.selectionStart, 6);
+  assert.equal(app.ids.taskInput.selectionEnd, 6);
+  assert.equal(app.document.activeElement, app.ids.taskInput);
+  assert.equal(app.ids.taskInput.focusOptions.preventScroll, true);
+  assert.equal(app.ids.taskSuggestions.hidden, true);
+});
+
+test("autocomplete pending matches never create or reactivate a duplicate, even in legacy data", () => {
+  const app = setup([
+    { id: "done", text: "Milk", completed: true, category: "Dairy" },
+    { id: "pending", text: " milk ", completed: false, category: "Other" }
+  ]);
+  const before = app.snapshot();
+  const options = typeTaskQuery(app, "mi");
+  assert.equal(options.length, 1);
+  options[0].click();
+  assert.deepEqual(app.snapshot(), before);
+  assert.equal(app.writes.length, 0);
+  assert.equal(app.ids.taskInput.value, "");
+  assert.equal(app.ids.taskSuggestions.hidden, true);
+});
+
+test("autocomplete tracks cursor changes without typing and ignores blank or multiline queries", () => {
+  const app = setup([
+    { id: "milk", text: "Milk", completed: false },
+    { id: "bread", text: "Bread", completed: true }
+  ]);
+  typeTaskQuery(app, "mi\nbr\n", 1);
+  assert.equal(app.ids.taskSuggestions.children[0].textContent, "Milk");
+  app.ids.taskInput.setSelectionRange(4, 4);
+  app.document.dispatch("selectionchange");
+  assert.equal(app.ids.taskSuggestions.children[0].textContent, "Bread");
+  app.ids.taskInput.setSelectionRange(6, 6);
+  app.ids.taskInput.dispatch("keyup", { key: "ArrowDown" });
+  assert.equal(app.ids.taskSuggestions.hidden, true);
+  typeTaskQuery(app, "mi\nbr", 1, 5);
+  assert.equal(app.ids.taskSuggestions.hidden, true);
+  typeTaskQuery(app, "  ");
+  assert.equal(app.ids.taskSuggestions.hidden, true);
+  typeTaskQuery(app, "unknown");
+  assert.equal(app.ids.taskSuggestions.hidden, true);
+});
+
+test("autocomplete supports keyboard focus, Escape dismissal, outside clicks and focus leaving", () => {
+  const app = setup([{ id: "milk", text: "Milk", completed: true }]);
+  let [option] = typeTaskQuery(app, "mi");
+  option.focus();
+  app.ids.taskEntry.dispatch("focusout", { relatedTarget: option });
+  assert.equal(app.ids.taskSuggestions.hidden, false);
+  app.document.dispatch("keydown", { key: "Escape" });
+  app.document.dispatch("selectionchange");
+  assert.equal(app.ids.taskSuggestions.hidden, true);
+  assert.equal(app.document.activeElement, app.ids.taskInput);
+  app.ids.taskInput.setSelectionRange(1, 1);
+  app.document.dispatch("selectionchange");
+  assert.equal(app.ids.taskSuggestions.hidden, false);
+  app.document.dispatch("click", { target: app.ids.themeToggle });
+  assert.equal(app.ids.taskSuggestions.hidden, true);
+  [option] = typeTaskQuery(app, "mil");
+  option.focus();
+  app.ids.taskEntry.dispatch("focusout", { relatedTarget: app.ids.themeToggle });
+  assert.equal(app.ids.taskSuggestions.hidden, true);
+  typeTaskQuery(app, "mi");
+  app.ids.taskEntry.dispatch("focusout", { relatedTarget: null });
+  assert.equal(app.ids.taskSuggestions.hidden, true);
+});
+
+test("autocomplete does not intercept multiline editing keys and respects composition", () => {
+  const app = setup([{ id: "milk", text: "Milk", completed: true }]);
+  typeTaskQuery(app, "mi");
+  for (const key of ["Enter", "ArrowUp", "ArrowDown", "Tab"]) {
+    assert.equal(app.ids.taskInput.dispatch("keydown", { key }).prevented, undefined);
+  }
+  app.ids.taskInput.dispatch("compositionstart");
+  assert.equal(app.ids.taskSuggestions.hidden, true);
+  typeTaskQuery(app, "mil");
+  assert.equal(app.ids.taskSuggestions.hidden, true);
+  app.ids.taskInput.dispatch("compositionend");
+  assert.equal(app.ids.taskSuggestions.hidden, false);
+});
+
+test("autocomplete invalidates stale suggestions and updates after task changes", () => {
+  const app = setup([{ id: "milk", text: "Milk", completed: true }]);
+  const [option] = typeTaskQuery(app, "mi");
+  app.run('deleteTask("milk")');
+  assert.equal(app.ids.taskSuggestions.hidden, true);
+  option.click();
+  assert.deepEqual(app.snapshot(), []);
+  assert.equal(app.ids.taskInput.value, "mi");
+  app.run('addTasks(["Milk"]);');
+  assert.equal(app.ids.taskSuggestions.hidden, false);
+  app.ids.taskInput.value = "changed draft";
+  app.ids.taskSuggestions.children[0].click();
+  assert.equal(app.ids.taskInput.value, "changed draft");
+  assert.equal(app.ids.taskSuggestions.hidden, true);
+});
+
+test("autocomplete renders names as text, includes all matches and preserves full form submission", () => {
+  const initial = Array.from({ length: 20 }, (_, index) => ({
+    id: String(index), text: `Milk ${index}`, completed: index % 2 === 0
+  }));
+  initial.push({ id: "markup", text: "<img src=x onerror=alert(1)> Milk", completed: true });
+  const app = setup(initial);
+  const options = typeTaskQuery(app, "milk");
+  assert.equal(options.length, 21);
+  assert.equal(options[20].textContent, initial[20].text);
+  assert.equal(options[20].children.length, 0);
+  typeTaskQuery(app, "Bread\nEggs");
+  app.ids.taskForm.dispatch("submit");
+  assert.equal(app.snapshot().length, 23);
+  assert.deepEqual(app.snapshot().slice(-2).map((task) => task.text), ["Bread", "Eggs"]);
+  assert.equal(app.ids.taskInput.value, "");
+  assert.equal(app.ids.taskSuggestions.hidden, true);
+});
 
 test("legacy tasks migrate without losing fields and category survives reload", () => {
   const app = setup([item("a")]);
